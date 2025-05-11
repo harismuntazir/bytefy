@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced 3D Particle Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111827; /* Tailwind gray-900 */ font-family: 'Inter', sans-serif; color: #d1d5db; }
+        #canvasContainer { width: 100vw; height: 100vh; display: block; }
+        #toolbar {
+            position: fixed;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 15px; 
+            background-color: rgba(31, 41, 55, 0.95); 
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.35);
+            display: flex;
+            flex-wrap: wrap; 
+            gap: 10px; 
+            align-items: center;
+            z-index: 10;
+            max-width: 95vw; 
+        }
+        .toolbar-group { display: flex; align-items: center; gap: 5px; }
+        #toolbar label {
+            color: #d1d5db; 
+            font-size: 0.78rem; 
+            white-space: nowrap;
+        }
+        #toolbar select, #toolbar input[type="color"], #toolbar input[type="range"] {
+            background-color: #374151; 
+            color: #f3f4f6; 
+            border: 1px solid #4b5563; 
+            padding: 6px 8px; 
+            border-radius: 6px; 
+            font-size: 0.78rem; 
+            outline: none;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        #toolbar select:focus, #toolbar input[type="color"]:focus, #toolbar input[type="range"]:focus {
+            border-color: #3b82f6; 
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
+        }
+        #toolbar input[type="color"] {
+            width: 34px; 
+            height: 30px; 
+            padding: 2px;
+            cursor: pointer;
+        }
+        #toolbar input[type="range"] {
+            padding: 0; 
+            height: 16px; 
+            cursor: pointer;
+        }
+        #toolbar output {
+            font-size: 0.78rem;
+            color: #d1d5db;
+            min-width: 2.3rem; 
+            text-align: right;
+        }
+        select::-webkit-scrollbar { width: 6px; }
+        select::-webkit-scrollbar-track { background: #374151; border-radius: 6px; }
+        select::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 6px; }
+        select::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        .hidden { display: none !important; }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="toolbar">
+        <div class="toolbar-group">
+            <label for="shapeSelector">Shape:</label>
+            <select id="shapeSelector">
+                <option value="scatter">Scatter</option>
+                <option value="sphere">Sphere</option>
+                <option value="cube">Cube</option>
+                <option value="cone">Cone</option>
+                <option value="cylinder">Cylinder</option>
+                <option value="torus">Torus</option>
+                <option value="torusKnot">Torus Knot</option>
+                <option value="icosahedron">Icosahedron</option>
+                <option value="dodecahedron">Dodecahedron</option>
+                <option value="octahedron">Octahedron</option>
+                <option value="tetrahedron">Tetrahedron</option>
+                <option value="plane">Plane</option>
+                <option value="ring">Ring</option>
+                <option value="circle">Circle</option>
+                <option value="teapot">Teapot</option>
+                <option value="leaf">Leaf</option>
+                <option value="flower">Flower</option>
+                <option value="dumbPhone">Dumb Phone</option>
+            </select>
+        </div>
+
+        <div class="toolbar-group">
+            <label for="animationSpeedSlider">Speed:</label>
+            <input type="range" id="animationSpeedSlider" min="500" max="5000" value="2000" step="100" class="w-16 md:w-24">
+            <output id="animationSpeedOutput" for="animationSpeedSlider">2.0s</output>
+        </div>
+
+        <div class="toolbar-group">
+            <label for="shapeSizeSlider">Size:</label>
+            <input type="range" id="shapeSizeSlider" min="4" max="20" value="12" step="1" class="w-16 md:w-24">
+            <output id="shapeSizeOutput" for="shapeSizeSlider">12</output>
+        </div>
+
+        <div class="toolbar-group">
+            <label for="colorMode">Color Mode:</label>
+            <select id="colorMode">
+                <option value="solid">Solid</option>
+                <option value="gradientY">Gradient Y-axis (3-color)</option>
+                </select>
+        </div>
+        
+        <div class="toolbar-group" id="solidColorGroup">
+            <label for="solidColorPicker">Color:</label>
+            <input type="color" id="solidColorPicker" value="#00ffff">
+        </div>
+
+        <div class="toolbar-group hidden" id="gradientColorsGroup">
+            <label for="gradientColorStart">Start:</label>
+            <input type="color" id="gradientColorStart" value="#ff00ff">
+            <label for="gradientColorMid">Mid:</label>
+            <input type="color" id="gradientColorMid" value="#ffff00">
+            <label for="gradientColorEnd">End:</label>
+            <input type="color" id="gradientColorEnd" value="#00ff00">
+        </div>
+    </div>
+    <div id="canvasContainer"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/"
+      }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { MeshSurfaceSampler } from 'three/addons/math/MeshSurfaceSampler.js';
+        import { TeapotGeometry } from 'three/addons/geometries/TeapotGeometry.js';
+
+        let scene, camera, renderer, particles, controls;
+        let particleMaterial; 
+        const numParticles = 3000; 
+        
+        let currentTargetPositions = new Float32Array(numParticles * 3);
+        let currentTargetColors = new Float32Array(numParticles * 3);
+        let initialRandomPositions = new Float32Array(numParticles * 3);
+
+        let shapeSelector, colorModeSelector;
+        let solidColorPicker, gradientColorStartPicker, gradientColorMidPicker, gradientColorEndPicker;
+        let solidColorGroup, gradientColorsGroup;
+        let animationSpeedSlider, animationSpeedOutput;
+        let shapeSizeSlider, shapeSizeOutput;
+
+        function init() {
+            // Cache DOM elements
+            shapeSelector = document.getElementById('shapeSelector');
+            animationSpeedSlider = document.getElementById('animationSpeedSlider');
+            animationSpeedOutput = document.getElementById('animationSpeedOutput');
+            shapeSizeSlider = document.getElementById('shapeSizeSlider'); 
+            shapeSizeOutput = document.getElementById('shapeSizeOutput'); 
+            colorModeSelector = document.getElementById('colorMode');
+            solidColorPicker = document.getElementById('solidColorPicker');
+            gradientColorStartPicker = document.getElementById('gradientColorStart');
+            gradientColorMidPicker = document.getElementById('gradientColorMid'); 
+            gradientColorEndPicker = document.getElementById('gradientColorEnd');
+            solidColorGroup = document.getElementById('solidColorGroup');
+            gradientColorsGroup = document.getElementById('gradientColorsGroup');
+
+            // Scene setup
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 35;
+
+            // Renderer setup
+            const canvasContainer = document.getElementById('canvasContainer');
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            canvasContainer.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0xffffff, 0.9);
+            camera.add(pointLight);
+            scene.add(camera);
+
+            // Create initial particles
+            createInitialParticles();
+
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 5; // Reverted minDistance to limit extreme zoom
+            controls.maxDistance = 200; 
+
+            // Event Listeners
+            shapeSelector.addEventListener('change', triggerTransition);
+            animationSpeedSlider.addEventListener('input', () => {
+                animationSpeedOutput.textContent = `${(parseInt(animationSpeedSlider.value) / 1000).toFixed(1)}s`;
+            });
+            shapeSizeSlider.addEventListener('input', () => { 
+                shapeSizeOutput.textContent = shapeSizeSlider.value;
+                triggerTransition(); 
+            });
+            colorModeSelector.addEventListener('change', () => {
+                toggleColorPickers();
+                triggerTransition();
+            });
+            solidColorPicker.addEventListener('input', triggerTransition);
+            gradientColorStartPicker.addEventListener('input', triggerTransition);
+            gradientColorMidPicker.addEventListener('input', triggerTransition); 
+            gradientColorEndPicker.addEventListener('input', triggerTransition);
+            window.addEventListener('resize', onWindowResize);
+
+            // Initial setup
+            toggleColorPickers(); 
+            generateInitialScatterState(); 
+            animationSpeedOutput.textContent = `${(parseInt(animationSpeedSlider.value) / 1000).toFixed(1)}s`;
+            shapeSizeOutput.textContent = shapeSizeSlider.value; 
+            
+            animate();
+        }
+
+        function createInitialParticles() {
+            const geometry = new THREE.BufferGeometry();
+            particleMaterial = new THREE.PointsMaterial({
+                size: 0.18, 
+                sizeAttenuation: true,
+                transparent: true,
+                opacity: 0.85,
+                vertexColors: true 
+            });
+            particles = new THREE.Points(geometry, particleMaterial);
+            scene.add(particles);
+        }
+        
+        function generateInitialScatterState() {
+            const positions = new Float32Array(numParticles * 3);
+            const colors = new Float32Array(numParticles * 3);
+            const solidColor = new THREE.Color(solidColorPicker.value);
+            const initialScale = parseFloat(shapeSizeSlider.value) * 2.5; 
+
+            for (let i = 0; i < numParticles; i++) {
+                const i3 = i * 3;
+                const r = initialScale + Math.random() * (initialScale * 0.5); 
+                const phi = Math.acos(2 * Math.random() - 1);
+                const theta = Math.random() * Math.PI * 2;
+                positions[i3]     = r * Math.sin(phi) * Math.cos(theta);
+                positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+                positions[i3 + 2] = r * Math.cos(phi);
+
+                colors[i3]     = solidColor.r;
+                colors[i3 + 1] = solidColor.g;
+                colors[i3 + 2] = solidColor.b;
+            }
+            initialRandomPositions.set(positions); 
+            
+            currentTargetPositions.set(positions);
+            currentTargetColors.set(colors);
+
+            particles.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+            particles.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3)); 
+            particles.geometry.attributes.position.needsUpdate = true;
+            particles.geometry.attributes.color.needsUpdate = true;
+        }
+
+        function mergeGeometries(geometries) {
+            const mergedPositions = [];
+            for (const geometry of geometries) {
+                const positionAttribute = geometry.getAttribute('position');
+                if (positionAttribute) {
+                    for (let i = 0; i < positionAttribute.count; i++) {
+                        mergedPositions.push(positionAttribute.getX(i), positionAttribute.getY(i), positionAttribute.getZ(i));
+                    }
+                }
+                geometry.dispose(); 
+            }
+            const finalGeometry = new THREE.BufferGeometry();
+            finalGeometry.setAttribute('position', new THREE.Float32BufferAttribute(mergedPositions, 3));
+            return finalGeometry;
+        }
+
+        function createLeafGeometry(scaleFactor) {
+            const geometry = new THREE.SphereGeometry(1 * scaleFactor, 32, 16);
+            geometry.applyMatrix4(new THREE.Matrix4().makeScale(1.5, 0.15, 0.6)); 
+            return geometry;
+        }
+
+        function createFlowerGeometry(scaleFactor) {
+            const petals = [];
+            const numPetals = 6;
+            const petalRadius = 0.6 * scaleFactor;
+            const flowerCenterRadius = 0.3 * scaleFactor;
+
+            for (let i = 0; i < numPetals; i++) {
+                const petalGeom = new THREE.SphereGeometry(petalRadius, 16, 8);
+                petalGeom.applyMatrix4(new THREE.Matrix4().makeScale(1.0, 0.2, 0.5)); 
+                const angle = (i / numPetals) * Math.PI * 2;
+                const x = Math.cos(angle) * petalRadius * 1.2;
+                const y = Math.sin(angle) * petalRadius * 1.2;
+                const petalMatrix = new THREE.Matrix4().multiplyMatrices(
+                    new THREE.Matrix4().makeTranslation(x, y, 0),
+                    new THREE.Matrix4().makeRotationZ(angle + Math.PI / 2)
+                );
+                petalGeom.applyMatrix4(petalMatrix);
+                petals.push(petalGeom);
+            }
+            const centerGeom = new THREE.SphereGeometry(flowerCenterRadius, 16, 16);
+            petals.push(centerGeom);
+            return mergeGeometries(petals);
+        }
+
+        function createDumbPhoneGeometry(scaleFactor) {
+            const geometry = new THREE.BoxGeometry(0.8 * scaleFactor, 1.8 * scaleFactor, 0.3 * scaleFactor, 5, 10, 2);
+            return geometry;
+        }
+
+        async function generateTargetShapePositions(shapeType, scaleFactor) {
+            if (shapeType === 'scatter') {
+                const scatterPositions = new Float32Array(numParticles * 3);
+                const scatterScale = parseFloat(scaleFactor) * 2.5; 
+                 for (let i = 0; i < numParticles; i++) {
+                    const i3 = i * 3;
+                    const r = scatterScale + Math.random() * (scatterScale * 0.5);
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    const theta = Math.random() * Math.PI * 2;
+                    scatterPositions[i3]     = r * Math.sin(phi) * Math.cos(theta);
+                    scatterPositions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+                    scatterPositions[i3 + 2] = r * Math.cos(phi);
+                }
+                return scatterPositions;
+            }
+
+            const targetPositions = new Float32Array(numParticles * 3);
+            let geometry;
+
+            switch (shapeType) {
+                case 'sphere':      geometry = new THREE.SphereGeometry(1 * scaleFactor, 64, 32); break;
+                case 'cube':        geometry = new THREE.BoxGeometry(1.5 * scaleFactor, 1.5 * scaleFactor, 1.5 * scaleFactor, 10, 10, 10); break;
+                case 'cone':        geometry = new THREE.ConeGeometry(1 * scaleFactor, 2 * scaleFactor, 64, 16); break;
+                case 'cylinder':    geometry = new THREE.CylinderGeometry(1 * scaleFactor, 1 * scaleFactor, 2.5 * scaleFactor, 64, 16); break;
+                case 'torus':       geometry = new THREE.TorusGeometry(1 * scaleFactor, 0.4 * scaleFactor, 32, 100); break;
+                case 'torusKnot':   geometry = new THREE.TorusKnotGeometry(1 * scaleFactor, 0.3 * scaleFactor, 128, 16, 2, 3); break;
+                case 'icosahedron': geometry = new THREE.IcosahedronGeometry(1.5 * scaleFactor, 2); break;
+                case 'dodecahedron':geometry = new THREE.DodecahedronGeometry(1.5 * scaleFactor, 2); break;
+                case 'octahedron':  geometry = new THREE.OctahedronGeometry(1.5 * scaleFactor, 2); break;
+                case 'tetrahedron': geometry = new THREE.TetrahedronGeometry(1.5 * scaleFactor, 1); break;
+                case 'plane':       geometry = new THREE.PlaneGeometry(2 * scaleFactor, 2 * scaleFactor, 20, 20); break;
+                case 'ring':        geometry = new THREE.RingGeometry(0.8 * scaleFactor, 1.2 * scaleFactor, 64, 8); break;
+                case 'circle':      geometry = new THREE.CircleGeometry(1.2 * scaleFactor, 64); break;
+                case 'teapot':      geometry = new TeapotGeometry(1 * scaleFactor, 8); break;
+                case 'leaf':        geometry = createLeafGeometry(scaleFactor); break;
+                case 'flower':      geometry = createFlowerGeometry(scaleFactor); break;
+                case 'dumbPhone':   geometry = createDumbPhoneGeometry(scaleFactor); break;
+                default:            
+                    console.warn("Unknown shape type:", shapeType, "defaulting to scatter.");
+                    return initialRandomPositions; 
+            }
+            
+            const mesh = new THREE.Mesh(geometry); 
+            const sampler = new MeshSurfaceSampler(mesh).build();
+            const tempPosition = new THREE.Vector3();
+
+            for (let i = 0; i < numParticles; i++) {
+                sampler.sample(tempPosition);
+                targetPositions[i * 3]     = tempPosition.x;
+                targetPositions[i * 3 + 1] = tempPosition.y;
+                targetPositions[i * 3 + 2] = tempPosition.z;
+            }
+            geometry.dispose(); 
+            return targetPositions;
+        }
+
+        function generateTargetShapeColors(positionsArray, mode, colorVal1, colorVal2, colorVal3, isScatterShape) {
+            const colors = new Float32Array(numParticles * 3);
+            const c1 = new THREE.Color(colorVal1); 
+            const c2 = new THREE.Color(colorVal2); 
+            const c3 = new THREE.Color(colorVal3); 
+
+            if (isScatterShape || mode === 'solid') {
+                for (let i = 0; i < numParticles; i++) {
+                    colors[i * 3]     = c1.r;
+                    colors[i * 3 + 1] = c1.g;
+                    colors[i * 3 + 2] = c1.b;
+                }
+                return colors;
+            }
+
+            let minY = Infinity, maxY = -Infinity;
+            // maxRadiusSq and maxRadius are no longer needed as radial gradient is removed
+
+            if (mode === 'gradientY') {
+                for (let i = 0; i < numParticles; i++) {
+                    const y = positionsArray[i * 3 + 1];
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            } 
+            // Removed 'gradientRadial' else if block
+
+            for (let i = 0; i < numParticles; i++) {
+                const i3 = i * 3;
+                let t = 0; 
+
+                if (mode === 'gradientY') {
+                    const y = positionsArray[i3 + 1];
+                    t = (maxY === minY) ? 0.5 : (y - minY) / (maxY - minY);
+                } 
+                // Removed 'gradientRadial' t calculation
+                
+                let r_col, g_col, b_col;
+                if (t < 0.5) {
+                    const t_prime = t * 2; 
+                    r_col = c1.r + (c2.r - c1.r) * t_prime;
+                    g_col = c1.g + (c2.g - c1.g) * t_prime;
+                    b_col = c1.b + (c2.b - c1.b) * t_prime;
+                } else {
+                    const t_prime = (t - 0.5) * 2; 
+                    r_col = c2.r + (c3.r - c2.r) * t_prime;
+                    g_col = c2.g + (c3.g - c2.g) * t_prime;
+                    b_col = c2.b + (c3.b - c2.b) * t_prime;
+                }
+
+                colors[i3]     = r_col;
+                colors[i3 + 1] = g_col;
+                colors[i3 + 2] = b_col;
+            }
+            return colors;
+        }
+
+        async function triggerTransition() {
+            const shapeType = shapeSelector.value;
+            const animationDuration = parseInt(animationSpeedSlider.value); 
+            const currentShapeSize = parseFloat(shapeSizeSlider.value); 
+            const selectedColorMode = colorModeSelector.value;
+            const solidColorValue = solidColorPicker.value;
+            const gradientStartValue = gradientColorStartPicker.value;
+            const gradientMidValue = gradientColorMidPicker.value; 
+            const gradientEndValue = gradientColorEndPicker.value;
+
+            const newTargetPositions = await generateTargetShapePositions(shapeType, currentShapeSize); 
+            const newTargetColors = generateTargetShapeColors(
+                newTargetPositions, 
+                selectedColorMode, 
+                selectedColorMode === 'solid' ? solidColorValue : gradientStartValue, 
+                selectedColorMode === 'solid' ? solidColorValue : gradientMidValue, 
+                selectedColorMode === 'solid' ? solidColorValue : gradientEndValue,  
+                shapeType === 'scatter'
+            );
+            
+            currentTargetPositions.set(newTargetPositions); 
+            currentTargetColors.set(newTargetColors);     
+
+            animateParticlesToTargets(newTargetPositions, newTargetColors, animationDuration);
+        }
+
+        function animateParticlesToTargets(targetPositionsArray, targetColorsArray, duration) {
+            const currentPositions = particles.geometry.attributes.position.array;
+            const currentColors = particles.geometry.attributes.color.array;
+            
+            const startPositions = new Float32Array(currentPositions);
+            const startColors = new Float32Array(currentColors);
+
+            const animationProps = { progress: 0 };
+
+            anime.remove(currentPositions); 
+            anime.remove(currentColors);  
+            anime.remove(animationProps);
+
+            anime({
+                targets: animationProps,
+                progress: 1,
+                duration: duration,
+                easing: 'easeInOutExpo',
+                update: () => {
+                    for (let i = 0; i < numParticles; i++) {
+                        const idx = i * 3;
+                        currentPositions[idx]     = startPositions[idx]     + (targetPositionsArray[idx]     - startPositions[idx])     * animationProps.progress;
+                        currentPositions[idx + 1] = startPositions[idx + 1] + (targetPositionsArray[idx + 1] - startPositions[idx + 1]) * animationProps.progress;
+                        currentPositions[idx + 2] = startPositions[idx + 2] + (targetPositionsArray[idx + 2] - startPositions[idx + 2]) * animationProps.progress;
+                        
+                        currentColors[idx]        = startColors[idx]        + (targetColorsArray[idx]        - startColors[idx])        * animationProps.progress;
+                        currentColors[idx + 1]    = startColors[idx + 1]    + (targetColorsArray[idx + 1]    - startColors[idx + 1])    * animationProps.progress;
+                        currentColors[idx + 2]    = startColors[idx + 2]    + (targetColorsArray[idx + 2]    - startColors[idx + 2])    * animationProps.progress;
+                    }
+                    particles.geometry.attributes.position.needsUpdate = true;
+                    particles.geometry.attributes.color.needsUpdate = true;
+                },
+                complete: () => {
+                    currentPositions.set(targetPositionsArray);
+                    currentColors.set(targetColorsArray);
+                    particles.geometry.attributes.position.needsUpdate = true;
+                    particles.geometry.attributes.color.needsUpdate = true;
+                }
+            });
+        }
+        
+        function toggleColorPickers() {
+            const selectedMode = colorModeSelector.value;
+            if (selectedMode === 'solid') {
+                solidColorGroup.classList.remove('hidden');
+                gradientColorsGroup.classList.add('hidden');
+            } else { // For gradientY (now the only gradient option)
+                solidColorGroup.classList.add('hidden');
+                gradientColorsGroup.classList.remove('hidden');
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+
+    </script>
+</body>
+</html>
